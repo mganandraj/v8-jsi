@@ -4,7 +4,9 @@ param(
     [string]$OutputPath = "$PSScriptRoot\out",
     [string]$SourcesPath = $PSScriptRoot,
     [string]$Platform = "x64",
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Debug",
+    [bool]$Use_VS = $True,
+    [bool]$Configure_Only = $True
 )
 
 $workpath = Join-Path $SourcesPath "build"
@@ -86,11 +88,21 @@ else {
 
 $buildoutput = Join-Path $workpath "v8build\v8\out\$Platform\$Configuration"
 
-Write-Host "gn command line: gn gen $buildoutput --args='$gnargs'"
-& gn gen $buildoutput --args="$gnargs"
+$ide = '';
+if ($Use_VS -eq $True) {
+    $ide = '--ide=vs'
+}
+
+Write-Host $ide "gn command line: gn gen $ide $buildoutput --args='$gnargs'"
+& gn gen $ide $buildoutput --args="$gnargs"
 if (!$?) {
     Write-Host "Failed during build system generation (gn)"
     exit 1
+}
+
+if ($Configure_Only -eq $True) {
+    # Exit early without actually building
+    exit 0
 }
 
 & ninja -j 16 -C $buildoutput v8jsi
