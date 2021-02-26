@@ -5,6 +5,11 @@
 
 #include <memory>
 
+#ifdef _WIN32
+#include <windows.h>
+#include "etw/tracing.h"
+#endif
+
 #include <boost/asio.hpp>
 
 namespace inspector {
@@ -18,6 +23,10 @@ tcp_server::tcp_server(int port, ConnectionCallback callback, void* data)
   acceptor_.bind(endpoint);
   acceptor_.listen();
 
+  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Init",
+                    TraceLoggingString("Start listening ..", "message"),
+                    TraceLoggingUInt16(port, "port"));
+
   do_accept();
 }
 
@@ -29,6 +38,10 @@ void tcp_server::stop() {
   boost::system::error_code ec;
   acceptor_.close(ec);
   socket_.close(ec);
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Stop",
+                    TraceLoggingBool(ec.failed(), "failed"),
+                    TraceLoggingInt32(ec.value(), "error code"));
 
   io_service_.stop();
 }
@@ -88,8 +101,7 @@ void tcp_connection::read_loop_async() {
   });
 }
 
-// !!COPY
-void tcp_connection::write_async(std::vector<char> message_) {
+void tcp_connection::write_async(const std::vector<char>& message_) {
 
   {
     std::lock_guard<std::mutex> guard(queueAccessMutex);

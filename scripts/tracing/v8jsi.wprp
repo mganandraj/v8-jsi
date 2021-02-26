@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder Version="1.0" Author="Microsoft Corporation" Copyright="Microsoft Corporation" Company="Microsoft Corporation">
+  <Profiles>
+    <EventCollector Id="EventCollector_V8JsiTraceLoggingProvider" Name="V8JsiTraceLoggingProvider">
+      <BufferSize Value="64" />
+      <Buffers Value="4" />
+    </EventCollector>
+
+    <EventProvider Id="EventProvider_V8JsiTraceLoggingProvider" Name="85a99459-1f1d-49bd-b3dc-e5ef2ad0c2c8" />
+
+    <Profile Id="V8JsiTraceLoggingProvider.Verbose.File" Name="V8JsiTraceLoggingProvider" Description="V8JsiTraceLoggingProvider" LoggingMode="File" DetailLevel="Verbose">
+      <Collectors>
+        <EventCollectorId Value="EventCollector_V8JsiTraceLoggingProvider">
+          <EventProviders>
+            <EventProviderId Value="EventProvider_V8JsiTraceLoggingProvider" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+
+    <Profile Id="V8JsiTraceLoggingProvider.Light.File" Name="V8JsiTraceLoggingProvider" Description="V8JsiTraceLoggingProvider" Base="V8JsiTraceLoggingProvider.Verbose.File" LoggingMode="File" DetailLevel="Light" />
+    <Profile Id="V8JsiTraceLoggingProvider.Verbose.Memory" Name="V8JsiTraceLoggingProvider" Description="V8JsiTraceLoggingProvider" Base="V8JsiTraceLoggingProvider.Verbose.File" LoggingMode="Memory" DetailLevel="Verbose" />
+    <Profile Id="V8JsiTraceLoggingProvider.Light.Memory" Name="V8JsiTraceLoggingProvider" Description="V8JsiTraceLoggingProvider" Base="V8JsiTraceLoggingProvider.Verbose.File" LoggingMode="Memory" DetailLevel="Light" />
+
+  </Profiles>
+</WindowsPerformanceRecorder>

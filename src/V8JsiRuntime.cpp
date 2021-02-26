@@ -143,16 +143,15 @@ void V8Runtime::AddHostObjectLifetimeTracker(
       message->GetSourceLine(isolate->GetCurrentContext()).ToLocalChecked());
 
 #ifdef _WIN32
-  EventWriteMESSAGE(
-      *msg,
-      *source_line,
-      "",
-      message->GetLineNumber(isolate->GetCurrentContext()).ToChecked(),
-      message->GetStartPosition(),
-      message->GetEndPosition(),
-      message->ErrorLevel(),
-      message->GetStartColumn(),
-      message->GetEndColumn());
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8::OnMessage",
+                    TraceLoggingString(*msg, "message"),
+                    TraceLoggingString(*source_line, "source_line"),
+                    TraceLoggingInt32(message->GetLineNumber(isolate->GetCurrentContext()).ToChecked(), "Line"),
+                    TraceLoggingInt32(message->GetStartPosition(), "StartPos"),
+                    TraceLoggingInt32(message->GetEndPosition(), "EndPos"),
+                    TraceLoggingInt32(message->ErrorLevel(), "ErrorLevel"),
+                    TraceLoggingInt32(message->GetStartColumn(), "StartCol"),
+                    TraceLoggingInt32(message->GetEndColumn(), "EndCol"));
 #endif
 }
 
@@ -161,11 +160,10 @@ size_t V8Runtime::NearHeapLimitCallback(
     size_t current_heap_limit,
     size_t initial_heap_limit) {
 #ifdef _WIN32
-  EventWriteV8JSI_LOG(
-      "NearHeapLimitCallback",
-      std::to_string(current_heap_limit).c_str(),
-      std::to_string(initial_heap_limit).c_str(),
-      "");
+  TraceLoggingWrite(
+      g_hTraceLoggingProvider, "V8::NearHeapLimitCallback",
+      TraceLoggingInt64(current_heap_limit, "current_heap_limit"),
+      TraceLoggingInt64(initial_heap_limit, "initial_heap_limit"));
 #endif
   // Add 5MB.
   return current_heap_limit + 5 * 1024 * 1024;
@@ -274,14 +272,14 @@ void V8Runtime::DumpCounters(const char *when) {
   cookie++;
 #ifdef _WIN32
   for (std::pair<std::string, Counter *> element : *counter_map_) {
-    if (element.second->count() > 0)
-      EventWriteDUMPT_COUNTERS(
-          when,
-          cookie,
-          element.first.c_str(),
-          element.second->count(),
-          element.second->sample_total(),
-          element.second->is_histogram());
+    TraceLoggingWrite(
+        g_hTraceLoggingProvider, "V8::PerfCounters",
+        TraceLoggingString(when, "when"),
+        TraceLoggingInt32(cookie, "cookie"),
+        TraceLoggingString(element.first.c_str(), "name"),
+        TraceLoggingInt32(element.second->count(), "count"),
+        TraceLoggingInt32(element.second->sample_total(), "sample_total"),
+        TraceLoggingBool(element.second->is_histogram(), "is_histogram"));
   }
 #endif
 }
@@ -377,11 +375,16 @@ struct SameCodeObjects {
   switch (event->type) {
     case v8::JitCodeEvent::CODE_ADDED:
 #ifdef _WIN32
-      EventWriteJIT_CODE_EVENT(
-          event->type,
-          event->code_type,
-          std::string(event->name.str, event->name.len).c_str(),
-          "");
+      TraceLoggingWrite(
+          g_hTraceLoggingProvider, "V8::JIT",
+          TraceLoggingString("CODE_ADDED", "type"),
+          TraceLoggingString(
+              event->code_type == v8::JitCodeEvent::CodeType::BYTE_CODE
+                                ? "BYTE_CODE"
+                                : "JIT_CODE",
+                            "cookie"),
+          TraceLoggingString(
+              std::string(event->name.str, event->name.len).c_str(), "name"));
 #endif
       break;
 
@@ -415,15 +418,15 @@ struct SameCodeObjects {
         code_details.append(std::to_string(iter->pos_) + ":");
       }
 #ifdef _WIN32
-      EventWriteJIT_CODE_EVENT(
-          event->type, event->code_type, "###", code_details.c_str());
+     /* EventWriteJIT_CODE_EVENT(
+          event->type, event->code_type, "###", code_details.c_str());*/
 #endif
 
       break;
     }
     default:
 #ifdef _WIN32
-      EventWriteJIT_CODE_EVENT(event->type, event->code_type, "~~~", "");
+      //EventWriteJIT_CODE_EVENT(event->type, event->code_type, "~~~", "");
 #endif
       break;
   }
@@ -527,8 +530,10 @@ void V8Runtime::createHostObjectConstructorPerContext() {
 
 void V8Runtime::initializeTracing() {
 #ifdef _WIN32
-  EventRegisterv8jsi_Provider();
+  TraceLoggingRegister(g_hTraceLoggingProvider);
 #endif
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8-JSI initializing");
 }
 
 void V8Runtime::initializeV8() {
@@ -574,6 +579,8 @@ V8Runtime::V8Runtime(V8RuntimeArgs &&args) : args_(std::move(args)) {
     inspector_agent_->start();
 
     if (args_.waitForDebugger) {
+      TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector",
+                        TraceLoggingString("Waiting for debugger to attach", "message"));
       inspector_agent_->waitForDebugger();
     }
   }
@@ -635,6 +642,7 @@ jsi::Value V8Runtime::evaluateJavaScript(
   }
 
   jsi::Value result = ExecuteString(sourceV8String, sourceURL);
+
   return result;
 }
 

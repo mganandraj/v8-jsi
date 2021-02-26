@@ -151,7 +151,7 @@ enum ws_decode_result {
 
 static void generate_accept_string(const std::string& client_key,
                                    char (*buffer)[ACCEPT_KEY_LENGTH]) {
-  // Magic string from websockets spec.
+  // Magic string from websockets spec: https://tools.ietf.org/html/rfc6455
   static const char ws_magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
   std::string input(client_key + ws_magic);
 
@@ -646,13 +646,6 @@ int TcpHolder::WriteRaw(const std::vector<char>& buffer/*, uv_write_cb write_cb*
   printf("\n");
 #endif
 
-  // Freed in write_request_cleanup
-  /*WriteRequest* wr = new WriteRequest(handler_, buffer);
-  uv_stream_t* stream = reinterpret_cast<uv_stream_t*>(&tcp_);
-  int err = uv_write(&wr->req, stream, &wr->buf, 1, write_cb);
-  if (err < 0)
-    delete wr;
-  return err < 0;*/
   connection_->write_async(buffer);
   return 0;
 }

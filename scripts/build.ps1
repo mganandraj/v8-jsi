@@ -59,12 +59,14 @@ else {
 
 $buildoutput = Join-Path $workpath "v8build\v8\out\$AppPlatform\$Platform\$Configuration"
 
-Write-Host "gn command line: gn gen $buildoutput --args='$gnargs'"
-& gn gen $buildoutput --args="$gnargs"
+Write-Host "gn command line: gn gen $buildoutput --args='$gnargs' --ide=vs"
+& gn gen $buildoutput --args="$gnargs" --ide=vs
 if (!$?) {
     Write-Host "Failed during build system generation (gn)"
     exit 1
 }
+
+exit
 
 # We'll use 2x the number of cores for parallel execution
 $numberOfThreads = [int]((Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors) * 2

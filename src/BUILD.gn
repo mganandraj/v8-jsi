@@ -21,6 +21,7 @@ target("shared_library", "v8jsi") {
     "public/V8JsiRuntime.h",
     "V8JsiRuntime_impl.h",
     "V8JsiRuntime.cpp",
+    "etw/tracing.cpp",
     "V8Platform.cpp",
     "V8Platform.h",
   ]
@@ -110,5 +111,30 @@ target("executable", "jsitests") {
     "jsi/test/testlib.h",
     "jsi/test/testlib.cpp",
     "testmain.cpp"
+  ]
+}
+
+target("executable", "v8jsiapp") {
+  testonly = true
+
+  deps = [
+    ":v8jsi",
+    "//build/win:default_exe_manifest",
+  ]
+
+  configs += [ "//:internal_config_base", "//build/config/compiler:exceptions" ]
+  configs -= [ "//build/config/compiler:no_exceptions" ]
+
+  include_dirs = [ ".", "../include", "jsi", getenv("BOOST_ROOT") ]
+
+  sources = [
+    "v8jsiapp/logger.cpp",
+    "v8jsiapp/logger.h",
+    "v8jsiapp/main.cpp",
+    "v8jsiapp/scripthost.cpp",
+    "v8jsiapp/scripthost.h",
+    "v8jsiapp/typedjsi.cpp",
+    "v8jsiapp/typedjsi.h",
+    "jsi/jsi.cpp",
   ]
 }

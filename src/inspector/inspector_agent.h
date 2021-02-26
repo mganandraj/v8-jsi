@@ -45,7 +45,7 @@ class Agent {
       v8::Local<v8::Message> message);
 
  private:
-  std::shared_ptr<AgentImpl> impl;
+  std::shared_ptr<AgentImpl> impl_;
 };
 
 } // namespace inspector

@@ -20,6 +20,11 @@
 #include <random>
 #include <algorithm>
 
+#ifdef _WIN32
+#include <windows.h>
+#include "etw/tracing.h"
+#endif
+
 #include "../V8Platform.h"
 
 namespace inspector {
@@ -38,7 +43,7 @@ OneByteString(v8::Isolate *isolate, const char *data, int length = -1) {
 }
 
 std::string GetProcessTitle() {
-  return "ReactNativeWindows";
+  return "V8JsiHost";
 }
 
 std::string GenerateID() {
@@ -374,23 +379,15 @@ void InspectorWrapConsoleCall(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 void AgentImpl::Start() {
-  auto self(shared_from_this());
-  std::thread([this, self]() {
-    auto delegate = std::make_unique<InspectorAgentDelegate>(*this, "", script_name_, wait_);
-    server_ = std::make_unique<InspectorSocketServer>(std::move(delegate), port_);
+  // auto self(shared_from_this());
+  auto delegate =
+      std::make_unique<InspectorAgentDelegate>(*this, "", script_name_, wait_);
+  server_ = std::make_unique<InspectorSocketServer>(std::move(delegate), port_);
+  if (!server_->Start()) {
+    std::abort();
+  }
 
-    state_ = State::kAccepting;
-
-    // This loops
-    if (!server_->Start()) {
-      std::abort();
-    }
-
-    server_->Stop();
-
-    server_.reset();
-  })
-      .detach();
+  state_ = State::kAccepting;
 }
 
 void AgentImpl::waitForDebugger() {
@@ -505,6 +502,10 @@ void AgentImpl::SwapBehindLock(MessageQueue *vector1, MessageQueue *vector2) {
 void AgentImpl::PostIncomingMessage(
     int session_id,
     const std::string &message) {
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Out",
+                    TraceLoggingString(message.c_str(), "message"));
+
   if (AppendMessage(
           &incoming_message_queue_, session_id, Utf8ToStringView(message))) {
 
@@ -606,39 +607,39 @@ Agent::Agent(
     v8::Local<v8::Context> context,
     const char *context_name,
     int port)
-    : impl(std::make_shared<AgentImpl>(platform, isolate, context, context_name, port)) {}
+    : impl_(std::make_shared<AgentImpl>(platform, isolate, context, context_name, port)) {}
 
 Agent::~Agent() {
 }
 
 void Agent::waitForDebugger() {
-  impl->waitForDebugger();
+  impl_->waitForDebugger();
 }
 
 void Agent::stop() {
-  impl->Stop();
+  impl_->Stop();
 }
 
 void Agent::start() {
-  impl->Start();
+  impl_->Start();
 }
 
 bool Agent::IsStarted() {
-  return impl->IsStarted();
+  return impl_->IsStarted();
 }
 
 bool Agent::IsConnected() {
-  return impl->IsConnected();
+  return impl_->IsConnected();
 }
 
 void Agent::WaitForDisconnect() {
-  impl->WaitForDisconnect();
+  impl_->WaitForDisconnect();
 }
 
 void Agent::FatalException(
     v8::Local<v8::Value> error,
     v8::Local<v8::Message> message) {
-  impl->FatalException(error, message);
+  impl_->FatalException(error, message);
 }
 
 InspectorAgentDelegate::InspectorAgentDelegate(
