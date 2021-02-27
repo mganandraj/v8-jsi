@@ -11,6 +11,12 @@
 #include <cstdint>
 #include <cstring>
 
+#ifdef _WIN32
+#include <windows.h>
+#include "etw/tracing.h"
+#endif
+
+
 typedef llhttp_type_t parser_type_t;
 typedef llhttp_errno_t parser_errno_t;
 typedef llhttp_settings_t parser_settings_t;
@@ -339,10 +345,15 @@ class WsHandler : public ProtocolHandler {
     }
   }
 
-  void AcceptUpgrade(const std::string& accept_key) override { }
-  void CancelHandshake() override {}
+  void AcceptUpgrade(const std::string& accept_key) override {
+    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::AcceptUpgrade");
+  }
+  void CancelHandshake() override {
+    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::CancelHandshake");
+  }
 
   void OnEof() override {
+    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::OnEof");
     if (tcp_)
     {
       tcp_.reset();
@@ -350,6 +361,8 @@ class WsHandler : public ProtocolHandler {
   }
 
   void OnData(std::vector<char>* data) override {
+    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::OnData",
+                      TraceLoggingString(data->data(), "data"));
     // 1. Parse.
     size_t processed = 0;
     do {
@@ -362,6 +375,9 @@ class WsHandler : public ProtocolHandler {
   }
 
   void Write(const std::vector<char> data) override {
+    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::Write",
+                      TraceLoggingString(data.data(), "data"));
+
     std::vector<char> output = encode_frame_hybi17(data);
     WriteRaw(output/*, WriteRequest::Cleanup*/);
   }
@@ -396,18 +412,26 @@ class WsHandler : public ProtocolHandler {
     std::vector<char> output;
     bool compressed = false;
 
+    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::ParseWsFrames",
+                      TraceLoggingString(buffer.data(), "buffer"));
+
     ws_decode_result r =  decode_frame_hybi17(buffer,
                                               true /* client_frame */,
                                               &bytes_consumed, &output,
                                               &compressed);
     // Compressed frame means client is ignoring the headers and misbehaves
     if (compressed || r == FRAME_ERROR) {
+      TraceLoggingWrite(g_hTraceLoggingProvider,
+                        "WsHandler::ParseWsFrames::OnEof");
       OnEof();
       bytes_consumed = 0;
     } else if (r == FRAME_CLOSE) {
+      TraceLoggingWrite(g_hTraceLoggingProvider,
+                        "WsHandler::ParseWsFrames::FRAME_CLOSE");
       (this->*OnCloseRecieved)();
       bytes_consumed = 0;
     } else if (r == FRAME_OK) {
+      TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::FRAME_OK");
       delegate()->OnWsFrame(output);
     }
     return bytes_consumed;
@@ -447,6 +471,8 @@ class HttpHandler : public ProtocolHandler {
   }
 
   void AcceptUpgrade(const std::string& accept_key) override {
+    TraceLoggingWrite(g_hTraceLoggingProvider, "HttpHandler::AcceptUpgrade",
+                      TraceLoggingString(accept_key.c_str(), "accept_key"));
     char accept_string[ACCEPT_KEY_LENGTH];
     generate_accept_string(accept_key, &accept_string);
     const char accept_ws_prefix[] = "HTTP/1.1 101 Switching Protocols\r\n"
@@ -467,7 +493,10 @@ class HttpHandler : public ProtocolHandler {
     }
   }
 
+  // TODODO
   void CancelHandshake() override {
+    TraceLoggingWrite(g_hTraceLoggingProvider, "HttpHandler::CancelHandshake");
+
     const char HANDSHAKE_FAILED_RESPONSE[] =
         "HTTP/1.0 400 Bad Request\r\n"
         "Content-Type: text/html; charset=UTF-8\r\n\r\n"
@@ -479,10 +508,15 @@ class HttpHandler : public ProtocolHandler {
 
 
   void OnEof() override {
+    TraceLoggingWrite(g_hTraceLoggingProvider, "HttpHandler::OnEof");
     tcp_.reset();
   }
 
   void OnData(std::vector<char>* data) override {
+
+    TraceLoggingWrite(g_hTraceLoggingProvider, "HttpHandler::OnData",
+                      TraceLoggingString(data->data(), "data"));
+
     parser_errno_t err;
     err = llhttp_execute(&parser_, data->data(), data->size());
 

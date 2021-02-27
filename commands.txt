@@ -1,1 +1,5 @@
 gn gen out/my --args="v8_enable_i18n_support=false is_component_build=false v8_monolithic=true v8_use_external_startup_data=false treat_warnings_as_errors=false is_clang=false v8_enable_pointer_compression=true enable_iterator_debugging=true is_debug=true" --ide=vs 
+
+powershell .\scripts\tracing\Start-Tracing.ps1
+
+powershell .\scripts\tracing\Stop-Tracing.ps1

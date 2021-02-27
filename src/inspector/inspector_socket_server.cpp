@@ -380,8 +380,9 @@ void InspectorSocketServer::Accept(std::shared_ptr<tcp_connection> connection, i
 
 void InspectorSocketServer::Send(int session_id, const std::string& message) {
 
-  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Out",
-                  TraceLoggingString(message.c_str(), "message"));
+  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Message",
+                    TraceLoggingString("out", "op"),
+                    TraceLoggingString(message.c_str(), "message"));
 
   SocketSession* session = Session(session_id);
   if (session != nullptr) {

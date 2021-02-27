@@ -224,7 +224,10 @@ void V8Runtime::GCPrologueCallback(
     v8::GCType type,
     v8::GCCallbackFlags flags) {
   std::string prefix("GCPrologue");
-  DumpCounters(GCTypeToString(prefix, type, flags).c_str());
+  std::string gcTypeString = GCTypeToString(prefix, type, flags);
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8Runtime::GCPrologueCallback",
+                    TraceLoggingString(gcTypeString.c_str(), "GCType"));
+  DumpCounters(gcTypeString.c_str());
 }
 
 void V8Runtime::GCEpilogueCallback(
@@ -232,7 +235,11 @@ void V8Runtime::GCEpilogueCallback(
     v8::GCType type,
     v8::GCCallbackFlags flags) {
   std::string prefix("GCEpilogue");
-  DumpCounters(GCTypeToString(prefix, type, flags).c_str());
+  std::string gcTypeString = GCTypeToString(prefix, type, flags);
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8Runtime::GCEpilogueCallback",
+                    TraceLoggingString(gcTypeString.c_str(), "GCType"));
+
+  DumpCounters(gcTypeString.c_str());
 }
 
 CounterMap *V8Runtime::counter_map_;
@@ -433,6 +440,9 @@ struct SameCodeObjects {
 }
 
 v8::Isolate *V8Runtime::CreateNewIsolate() {
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8::CreateNewIsolate",
+                    TraceLoggingString("start", "op"));
+
   if (args_.custom_snapshot_blob) {
     custom_snapshot_startup_data_ = {
         reinterpret_cast<const char *>(args_.custom_snapshot_blob->data()),
@@ -501,6 +511,10 @@ v8::Isolate *V8Runtime::CreateNewIsolate() {
       [](v8::Isolate *) { return true; });
 
   isolate_->Enter();
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8::CreateNewIsolate",
+                    TraceLoggingString("end", "op"));
+  DumpCounters("isolate_created");
 
   return isolate_;
 }
@@ -626,6 +640,10 @@ V8Runtime::~V8Runtime() {
 jsi::Value V8Runtime::evaluateJavaScript(
     const std::shared_ptr<const jsi::Buffer> &buffer,
     const std::string &sourceURL) {
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8::evaluateJavaScript",
+                    TraceLoggingString("start", "op"));
+  
   _ISOLATE_CONTEXT_ENTER
 
   v8::Local<v8::String> sourceV8String;
@@ -642,6 +660,10 @@ jsi::Value V8Runtime::evaluateJavaScript(
   }
 
   jsi::Value result = ExecuteString(sourceV8String, sourceURL);
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8::evaluateJavaScript",
+                    TraceLoggingString("end", "op"));
+  DumpCounters("script evaluated");
 
   return result;
 }
@@ -668,6 +690,10 @@ void Print(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
 v8::Local<v8::Context> V8Runtime::CreateContext(v8::Isolate *isolate) {
   // Create a template for the global object.
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8Runtime::CreateContext",
+                    TraceLoggingString("start", "op"));
+
   v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate);
 
   global->Set(
@@ -677,6 +703,11 @@ v8::Local<v8::Context> V8Runtime::CreateContext(v8::Isolate *isolate) {
 
   v8::Local<v8::Context> context = v8::Context::New(isolate, NULL, global);
   context->SetAlignedPointerInEmbedderData(1, this);
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8Runtime::CreateContext",
+                    TraceLoggingString("end", "op"));
+  DumpCounters("context_created");
+
   return context;
 }
 
@@ -1320,6 +1351,10 @@ jsi::Value V8Runtime::call(
     const jsi::Value &jsThis,
     const jsi::Value *args,
     size_t count) {
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8Runtime::call",
+                    TraceLoggingString("start", "op"));
+  
   _ISOLATE_CONTEXT_ENTER
   v8::Local<v8::Function> func =
       v8::Local<v8::Function>::Cast(objectRef(jsiFunc));
@@ -1339,6 +1374,10 @@ jsi::Value V8Runtime::call(
     ReportException(&trycatch);
   }
 
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8Runtime::call",
+                    TraceLoggingString("end", "op"));
+  DumpCounters("call_completed");
+
   // Call can return
   if (result.IsEmpty()) {
     return createValue(v8::Undefined(GetIsolate()));
@@ -1351,6 +1390,10 @@ jsi::Value V8Runtime::callAsConstructor(
     const jsi::Function &jsiFunc,
     const jsi::Value *args,
     size_t count) {
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8Runtime::callAsConstructor",
+                    TraceLoggingString("start", "op"));
+
   _ISOLATE_CONTEXT_ENTER
   v8::Local<v8::Function> func =
       v8::Local<v8::Function>::Cast(objectRef(jsiFunc));
@@ -1372,6 +1415,10 @@ jsi::Value V8Runtime::callAsConstructor(
   if (trycatch.HasCaught()) {
     ReportException(&trycatch);
   }
+
+  TraceLoggingWrite(g_hTraceLoggingProvider, "V8Runtime::callAsConstructor",
+                    TraceLoggingString("end", "op"));
+  DumpCounters("callAsConstructor_completed");
 
   return createValue(newObject);
 }

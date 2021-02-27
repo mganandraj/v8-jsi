@@ -503,7 +503,8 @@ void AgentImpl::PostIncomingMessage(
     int session_id,
     const std::string &message) {
 
-  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Out",
+  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Message",
+                    TraceLoggingString("in", "op"),
                     TraceLoggingString(message.c_str(), "message"));
 
   if (AppendMessage(
