@@ -215,10 +215,11 @@ void InspectorSocketServer::SessionStarted(int session_id,
   const std::string& ws_key) {
   SocketSession* session = Session(session_id);
 
-  if (!TargetExists(id)) {
+  // TODODO Enable before checkin.
+  /*if (!TargetExists(id)) {
     session->Decline();
     return;
-  }
+  }*/
       
   //TODODO
   // if (connected_session_) std::abort();
@@ -380,8 +381,7 @@ void InspectorSocketServer::Accept(std::shared_ptr<tcp_connection> connection, i
 
 void InspectorSocketServer::Send(int session_id, const std::string& message) {
 
-  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Message",
-                    TraceLoggingString("out", "op"),
+  TRACEV8INSPECTOR_VERBOSE("OutMessage",
                     TraceLoggingString(message.c_str(), "message"));
 
   SocketSession* session = Session(session_id);

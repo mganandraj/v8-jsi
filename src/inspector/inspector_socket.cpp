@@ -346,14 +346,14 @@ class WsHandler : public ProtocolHandler {
   }
 
   void AcceptUpgrade(const std::string& accept_key) override {
-    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::AcceptUpgrade");
+    TRACEV8INSPECTOR_VERBOSE("WsHandler::AcceptUpgrade");
   }
   void CancelHandshake() override {
-    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::CancelHandshake");
+    TRACEV8INSPECTOR_VERBOSE("WsHandler::CancelHandshake");
   }
 
   void OnEof() override {
-    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::OnEof");
+    TRACEV8INSPECTOR_VERBOSE("WsHandler::OnEof");
     if (tcp_)
     {
       tcp_.reset();
@@ -361,7 +361,7 @@ class WsHandler : public ProtocolHandler {
   }
 
   void OnData(std::vector<char>* data) override {
-    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::OnData",
+    TRACEV8INSPECTOR_VERBOSE("WsHandler::OnData",
                       TraceLoggingString(data->data(), "data"));
     // 1. Parse.
     size_t processed = 0;
@@ -375,8 +375,7 @@ class WsHandler : public ProtocolHandler {
   }
 
   void Write(const std::vector<char> data) override {
-    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::Write",
-                      TraceLoggingString(data.data(), "data"));
+    TRACEV8INSPECTOR_VERBOSE("WsHandler::Write");
 
     std::vector<char> output = encode_frame_hybi17(data);
     WriteRaw(output/*, WriteRequest::Cleanup*/);
@@ -411,27 +410,21 @@ class WsHandler : public ProtocolHandler {
     size_t bytes_consumed = 0;
     std::vector<char> output;
     bool compressed = false;
-
-    TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::ParseWsFrames",
-                      TraceLoggingString(buffer.data(), "buffer"));
-
     ws_decode_result r =  decode_frame_hybi17(buffer,
                                               true /* client_frame */,
                                               &bytes_consumed, &output,
                                               &compressed);
     // Compressed frame means client is ignoring the headers and misbehaves
     if (compressed || r == FRAME_ERROR) {
-      TraceLoggingWrite(g_hTraceLoggingProvider,
-                        "WsHandler::ParseWsFrames::OnEof");
+      TRACEV8INSPECTOR_VERBOSE("WsHandler::ParseWsFrames::OnEof");
       OnEof();
       bytes_consumed = 0;
     } else if (r == FRAME_CLOSE) {
-      TraceLoggingWrite(g_hTraceLoggingProvider,
-                        "WsHandler::ParseWsFrames::FRAME_CLOSE");
+      TRACEV8INSPECTOR_VERBOSE("WsHandler::ParseWsFrames::FRAME_CLOSE");
       (this->*OnCloseRecieved)();
       bytes_consumed = 0;
     } else if (r == FRAME_OK) {
-      TraceLoggingWrite(g_hTraceLoggingProvider, "WsHandler::FRAME_OK");
+      TRACEV8INSPECTOR_VERBOSE("WsHandler::FRAME_OK");
       delegate()->OnWsFrame(output);
     }
     return bytes_consumed;
@@ -471,7 +464,7 @@ class HttpHandler : public ProtocolHandler {
   }
 
   void AcceptUpgrade(const std::string& accept_key) override {
-    TraceLoggingWrite(g_hTraceLoggingProvider, "HttpHandler::AcceptUpgrade",
+    TRACEV8INSPECTOR_VERBOSE("HttpHandler::AcceptUpgrade",
                       TraceLoggingString(accept_key.c_str(), "accept_key"));
     char accept_string[ACCEPT_KEY_LENGTH];
     generate_accept_string(accept_key, &accept_string);
@@ -495,7 +488,7 @@ class HttpHandler : public ProtocolHandler {
 
   // TODODO
   void CancelHandshake() override {
-    TraceLoggingWrite(g_hTraceLoggingProvider, "HttpHandler::CancelHandshake");
+    TRACEV8INSPECTOR_VERBOSE("HttpHandler::CancelHandshake");
 
     const char HANDSHAKE_FAILED_RESPONSE[] =
         "HTTP/1.0 400 Bad Request\r\n"
@@ -508,14 +501,13 @@ class HttpHandler : public ProtocolHandler {
 
 
   void OnEof() override {
-    TraceLoggingWrite(g_hTraceLoggingProvider, "HttpHandler::OnEof");
+    TRACEV8INSPECTOR_VERBOSE("HttpHandler::OnEof");
     tcp_.reset();
   }
 
   void OnData(std::vector<char>* data) override {
 
-    TraceLoggingWrite(g_hTraceLoggingProvider, "HttpHandler::OnData",
-                      TraceLoggingString(data->data(), "data"));
+    TRACEV8INSPECTOR_VERBOSE("HttpHandler::OnData");
 
     parser_errno_t err;
     err = llhttp_execute(&parser_, data->data(), data->size());

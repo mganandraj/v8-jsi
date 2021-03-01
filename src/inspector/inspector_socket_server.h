@@ -29,6 +29,7 @@ class InspectorAgentDelegate {
   std::vector<std::string> GetTargetIds();
   std::string GetTargetTitle(const std::string &id);
   std::string GetTargetUrl(const std::string &id);
+  void UpdateScriptPath(const std::string& message);
   bool IsConnected() {
     return connected_;
   }
@@ -38,7 +39,7 @@ class InspectorAgentDelegate {
   bool connected_;
   int session_id_;
   const std::string script_name_;
-  const std::string script_path_;
+  std::string script_path_;
   const std::string target_id_;
   bool waiting_;
 };

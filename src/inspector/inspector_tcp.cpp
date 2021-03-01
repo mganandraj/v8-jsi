@@ -23,8 +23,7 @@ tcp_server::tcp_server(int port, ConnectionCallback callback, void* data)
   acceptor_.bind(endpoint);
   acceptor_.listen();
 
-  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Init",
-                    TraceLoggingString("Start listening ..", "message"),
+  TRACEV8INSPECTOR_VERBOSE("tcp_server::Init",
                     TraceLoggingUInt16(port, "port"));
 
   do_accept();
@@ -39,7 +38,7 @@ void tcp_server::stop() {
   acceptor_.close(ec);
   socket_.close(ec);
 
-  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Stop",
+  TRACEV8INSPECTOR_VERBOSE("tcp_server::Stop",
                     TraceLoggingBool(ec.failed(), "failed"),
                     TraceLoggingInt32(ec.value(), "error code"));
 

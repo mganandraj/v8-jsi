@@ -391,6 +391,8 @@ void AgentImpl::Start() {
 }
 
 void AgentImpl::waitForDebugger() {
+  // TODO:: We should create more discrete events, and add the text as argument.
+  TRACEV8INSPECTOR_VERBOSE("Waiting for frontend message");
   WaitForFrontendMessage();
 
   if (state_ == State::kError) {
@@ -408,6 +410,7 @@ void AgentImpl::waitForDebugger() {
           reinterpret_cast<const uint8_t *>(reasonstr.c_str()),
           reasonstr.size());
   inspector_->session_->schedulePauseOnNextStatement(reason, details);
+  TRACEV8INSPECTOR_VERBOSE("Resuming after frontend attached.");
 }
 
 void AgentImpl::Stop() {
@@ -503,8 +506,7 @@ void AgentImpl::PostIncomingMessage(
     int session_id,
     const std::string &message) {
 
-  TraceLoggingWrite(g_hTraceLoggingProvider, "Inspector::Message",
-                    TraceLoggingString("in", "op"),
+  TRACEV8INSPECTOR_VERBOSE("InMessage",
                     TraceLoggingString(message.c_str(), "message"));
 
   if (AppendMessage(

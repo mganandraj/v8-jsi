@@ -44,8 +44,7 @@ uint64_t ETWTracingController::AddTraceEvent(
   }
 
 #if defined(_WIN32) && !defined(__clang__)
-  TraceLoggingWrite(
-      g_hTraceLoggingProvider, "V8::Trace", TraceLoggingInt8(phase, phase),
+  TRACEV8RUNTIME_VERBOSE("V8::Trace", TraceLoggingInt8(phase, phase),
       TraceLoggingString(name, "name"),
       TraceLoggingString(scope, "scope"), TraceLoggingUInt64(id, "id"),
       TraceLoggingString(scope, "scope"),
@@ -107,8 +106,7 @@ uint64_t ETWTracingController::AddTraceEventWithTimestamp(
   }
 
 #if defined(_WIN32) && !defined(__clang__)
-  TraceLoggingWrite(
-      g_hTraceLoggingProvider, "V8::Trace",
+  TRACEV8RUNTIME_VERBOSE("V8::Trace",
       TraceLoggingInt8(phase, phase),
       TraceLoggingString(name, "name"),
       TraceLoggingInt64(timestamp, "timestamp"),
