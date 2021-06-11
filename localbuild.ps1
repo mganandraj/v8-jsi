@@ -1,41 +1,47 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 param(
-    [string]$Platform = "x64",
-    [string]$Configuration = "Debug"
+    [System.IO.DirectoryInfo]$SourcesPath = $PSScriptRoot,
+
+    [System.IO.DirectoryInfo]$OutputPath = "$PSScriptRoot\out",
+
+    [ValidateSet('x64', 'x86', 'arm64')]
+    [String[]]$Platform = @('x64'),
+
+    [ValidateSet('Debug', 'Release')]
+    [String[]]$Configuration = @('Debug'),
+
+    [ValidateSet('win32', 'uwp')]
+    [String[]]$AppPlatform = @('win32'),
+
+    [switch]$NoSetup
 )
 
-$OutputPath = "$PSScriptRoot\out"
-$SourcesPath = $PSScriptRoot
-$Platforms = "x64", "x86", "arm64"
-$Configurations = "Debug", "Release", "Release-Clang", "EXPERIMENTAL-libcpp-Clang"
+if (! $NoSetup.IsPresent) {
+    Write-Host "Downloading environment..."
+    & ".\scripts\download_depottools.ps1" -SourcesPath $SourcesPath
 
-Write-Host "Downloading environment..."
-& ".\scripts\download_depottools.ps1" -SourcesPath $SourcesPath
+    if (!$?) {
+        Write-Host "Failed to download depot-tools"
+        exit 1
+    }
 
-if (!$?) {
-    Write-Host "Failed to download depot-tools"
-    exit 1
-}
+    Write-Host "Fetching code..."
+    & ".\scripts\fetch_code.ps1" -SourcesPath $SourcesPath -OutputPath $OutputPath -Configuration $Configuration[0]
 
-Write-Host "Fetching code..."
-& ".\scripts\fetch_code.ps1" -SourcesPath $SourcesPath -OutputPath $OutputPath -Configuration $Configuration
-
-if (!$?) {
-    Write-Host "Failed to retrieve the v8 code"
-    exit 1
-}
-
-if ($Platform -like "all") {
-    foreach ($Plat in $Platforms) {
-        foreach ($Config in $Configurations) {
-            Write-Host "Building $Plat $Config..."
-            & ".\scripts\build.ps1" -SourcesPath $SourcesPath -OutputPath $OutputPath -Platform $Plat -Configuration $Config
-        }
+    if (!$?) {
+        Write-Host "Failed to retrieve the v8 code"
+        exit 1
     }
 }
-else {
-    & ".\scripts\build.ps1" -SourcesPath $SourcesPath -OutputPath $OutputPath -Platform $Platform -Configuration $Configuration
+
+foreach ($Plat in $Platform) {
+    foreach ($Config in $Configuration) {
+        foreach ($AppPlat in $AppPlatform) {
+            Write-Host "Building $AppPlat $Plat $Config..."
+            & ".\scripts\build.ps1" -SourcesPath $SourcesPath -OutputPath $OutputPath -Platform $Plat -Configuration $Config -AppPlatform $AppPlat
+        }
+    }
 }
 
 if (!$?) {

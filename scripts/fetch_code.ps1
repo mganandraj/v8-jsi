@@ -1,12 +1,16 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 param(
-    [string]$SourcesPath = $PSScriptRoot,
-    [string]$OutputPath = "$PSScriptRoot\out",
-    [string]$Configuration = "Release"
+    [System.IO.DirectoryInfo]$SourcesPath = $PSScriptRoot,
+    [System.IO.DirectoryInfo]$OutputPath = "$PSScriptRoot\out",
+    [string]$Configuration = "Release",
+    [string]$AppPlatform = "win32",
+    [string]$NugetDownloadLocation = 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe'
 )
 
 $workpath = Join-Path $SourcesPath "build"
+
+$env:GIT_REDIRECT_STDERR = '2>&1'
 
 Push-Location (Join-Path $workpath "v8build")
 & fetch v8
@@ -23,31 +27,31 @@ target_os= ['android']
 
 Push-Location (Join-Path $workpath "v8build\v8")
 
-$env:GIT_REDIRECT_STDERR = '2>&1'
-
 $config = Get-Content (Join-Path $SourcesPath "config.json") | Out-String | ConvertFrom-Json
 
 & git fetch origin $config.v8ref
 $CheckOutVersion = (git checkout FETCH_HEAD) | Out-String
+
+# Apply patches
+& git apply --ignore-whitespace (Join-Path $SourcesPath "scripts\patch\src.diff")
+
+& gclient runhooks
 & gclient sync
 
-#TODO (#2): Submit PR upstream to Google for this fix
-$FixNeededPath = Join-Path $workpath "v8build\v8\src\base\template-utils.h"
-(Get-Content $FixNeededPath) -replace ("#include <utility>", "#include <utility>`n#include <functional>") | Set-Content $FixNeededPath
-
-if (!$PSVersionTable.Platform -or $IsWindows) {
-    #TODO (#2): once the fix for the upstream hack lands, we can remove this patch (see https://bugs.chromium.org/p/chromium/issues/detail?id=1033106)
-    Copy-Item -Path ( Join-Path $SourcesPath "scripts\patch\tool_wrapper.py") -Destination (Join-Path $workpath "v8build\v8\build\toolchain\win\tool_wrapper.py") -Force
-}
+Push-Location (Join-Path $workpath "v8build\v8\build")
+& git apply --ignore-whitespace (Join-Path $SourcesPath "scripts\patch\build.diff")
 
 Pop-Location
 Pop-Location
+Pop-Location
 
-$verString = $config.version
+$version = [version]$config.version
 
 $gitRevision = ""
 $v8Version = ""
 
+#TODO: Remove before merging
+Write-Warning "CheckoutVersion: [$CheckoutVersion]"
 $Matches = $CheckOutVersion | Select-String -Pattern 'HEAD is now at (.+) Version (.+)'
 if ($Matches.Matches.Success) {
     $gitRevision = $Matches.Matches.Groups[1].Value
@@ -60,7 +64,16 @@ if (!(Test-Path -Path $OutputPath)) {
     New-Item -ItemType "directory" -Path $OutputPath | Out-Null
 }
 
-(Get-Content "$SourcesPath\ReactNative.V8Jsi.Windows.nuspec") -replace ('VERSION_DETAILS', "V8 version: $v8Version; Git revision: $gitRevision") | Set-Content "$OutputPath\ReactNative.V8Jsi.Windows.nuspec"
+$buildoutput = Join-Path $workpath "v8build\v8\out\$Platform\$Configuration"
+
+(Get-Content "$SourcesPath\src\version.rc") `
+    -replace ('V8JSIVER_MAJOR', $version.Major) `
+    -replace ('V8JSIVER_MINOR', $version.Minor) `
+    -replace ('V8JSIVER_BUILD', $version.Build) `
+    -replace ('V8JSIVER_V8REF', $v8Version.Replace('.', '_')) |`
+    Set-Content "$SourcesPath\src\version_gen.rc"
+
+Copy-Item $SourcesPath\ReactNative.V8Jsi.Windows.nuspec $OutputPath
 
 Write-Host "##vso[task.setvariable variable=V8JSI_VERSION;]$verString"
 
@@ -71,18 +84,13 @@ if ($PSVersionTable.Platform -and !$IsWindows) {
     & sudo bash $install_script_path
 }
 
-#TODO (#2): Use the .gzip for Android / Linux builds
-# Verify the Boost installation
-if (-not (Test-Path "$env:BOOST_ROOT\boost\asio.hpp")) {
-    if (-not (Test-Path (Join-Path $workpath "v8build/boost.1.71.0.0/lib/native/include/boost/asio.hpp"))) {
-        Write-Host "Boost ASIO not found, downloading..."
+# Download dependencies (ASIO used by Inspector implementation)
+$asioUrl ="https://github.com/chriskohlhoff/asio/archive/refs/tags/asio-1-18-1.zip"
+$asioPath = Join-Path $workpath "v8build"
+$asioDownload = Join-Path $asioPath $(Split-Path -Path $asioUrl -Leaf)
 
-        $targetNugetExe = Join-Path $workpath "nuget.exe"
-        Invoke-WebRequest "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile $targetNugetExe
+Invoke-WebRequest -Uri $asioUrl -OutFile $asioDownload
+$asioDownload | Expand-Archive -DestinationPath $asioPath -Force
 
-        & $targetNugetExe install -OutputDirectory (Join-Path $workpath "v8build") boost -Version 1.71.0
-    }
-
-    $env:BOOST_ROOT = Join-Path $workpath "v8build/boost.1.71.0.0/lib/native/include"
-    Write-Host "##vso[task.setvariable variable=BOOST_ROOT;]$env:BOOST_ROOT"
-}
+$env:ASIO_ROOT = Join-Path $asioPath "asio-asio-1-18-1\asio\include"
+Write-Host "##vso[task.setvariable variable=ASIO_ROOT;]$env:ASIO_ROOT"

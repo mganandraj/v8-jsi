@@ -1,9 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 // This code is based on the old node inspector implementation. See LICENSE_NODE for Node.js' project license details
+#include "v8-inspector.h"
+
 #include "inspector_socket_server.h"
 #include "inspector_tcp.h"
 #include "inspector_utils.h"
+
+#include "V8Windows.h"
 
 #include <algorithm>
 #include <map>
@@ -23,13 +27,6 @@ namespace {
     for (char& c : *string) {
       c = (c == '\"' || c == '\\') ? '_' : c;
     }
-  }
-
-  std::string FormatWsAddress(const std::string& host, int port,
-    const std::string& target_id,
-    bool include_protocol) {
-    // return FormatAddress(FormatHostPort(host, port), target_id, include_protocol);
-    return "formatted address!!";
   }
 
   std::string FormatHostPort(const std::string& host, int port) {
@@ -56,6 +53,14 @@ namespace {
     url << host << '/' << target_id;
     return url.str();
   }
+
+  std::string FormatWsAddress(const std::string& host, int port,
+                              const std::string& target_id,
+                              bool include_protocol) {
+    return FormatAddress(FormatHostPort(host, port), target_id,
+                         include_protocol);
+  }
+
 
   std::string MapToString(const std::map<std::string, std::string>& object) {
     bool first = true;
@@ -145,7 +150,7 @@ public:
     ws_socket_.reset();
   }
   void Send(const std::string& message);
-  void Own(InspectorSocket::Pointer ws_socket) {
+  void Own(std::unique_ptr<InspectorSocket> ws_socket) {
     ws_socket_ = std::move(ws_socket);
   }
   int id() const { return id_; }
@@ -185,15 +190,14 @@ public:
 
 private:
   const int id_;
-  InspectorSocket::Pointer ws_socket_;
+  std::unique_ptr<InspectorSocket> ws_socket_;
   const int server_port_;
 };
 
 InspectorSocketServer::InspectorSocketServer(
-  std::unique_ptr<SocketServerDelegate> delegate, int port, FILE* out)
+  std::unique_ptr<InspectorAgentDelegate>&& delegate, int port, FILE* out)
   : delegate_(std::move(delegate)), port_(port),
   next_session_id_(0), out_(out) {
-  delegate_->AssignServer(this);
   state_ = ServerState::kNew;
 }
 
@@ -209,12 +213,11 @@ void InspectorSocketServer::SessionStarted(int session_id,
   const std::string& id,
   const std::string& ws_key) {
   SocketSession* session = Session(session_id);
-      
-  //TODODO
-  //if (!TargetExists(id)) {
-  //  session->Decline();
-  //  return;
-  // }
+
+  if (!TargetExists(id)) {
+    session->Decline();
+    return;
+  }
       
   //TODODO
   // if (connected_session_) std::abort();
@@ -304,8 +307,8 @@ void InspectorSocketServer::SendListResponse(InspectorSocket* socket,
 std::string InspectorSocketServer::GetFrontendURL(bool is_compat,
   const std::string &formatted_address) {
   std::ostringstream frontend_url;
-  frontend_url << "chrome-devtools://devtools/bundled/";
-  frontend_url << (is_compat ? "inspector" : "js_app");
+  frontend_url << "devtools://devtools/bundled/";
+  frontend_url << (is_compat ? "inspector" : "node_app");
   frontend_url << ".html?experiments=true&v8only=true&ws=";
   frontend_url << formatted_address;
   return frontend_url.str();
@@ -321,10 +324,16 @@ std::string InspectorSocketServer::GetFrontendURL(bool is_compat,
   server->Stop();
 }
 
+void InspectorSocketServer::AddTarget(std::shared_ptr<AgentImpl> agent) {
+  delegate_->AddTarget(agent);
+}
+
 bool InspectorSocketServer::Start() {
-  tcp_server::pointer server = tcp_server::create(port_, InspectorSocketServer::SocketConnectedCallback, this);
+  tcp_server_ = std::make_shared<tcp_server>(port_, InspectorSocketServer::SocketConnectedCallback, this);
   state_ = ServerState::kRunning;
-  server->run();
+  std::thread([this]() {
+    tcp_server_->run();
+  }).detach();
   return true;
 }
 
@@ -332,11 +341,11 @@ void InspectorSocketServer::Stop() {
   if (state_ == ServerState::kStopped)
     return;
   CHECK_EQ(state_, ServerState::kRunning);
-  
+
   state_ = ServerState::kStopped;
-  
-  // TODODO
-  // Stop the server.
+
+  // This will stop the the server io_context which will result in stopping the server thread as well.
+  tcp_server_->stop();
 
   if (state_ == ServerState::kStopped) {
     delegate_.reset();
@@ -362,11 +371,9 @@ void InspectorSocketServer::Accept(std::shared_ptr<tcp_connection> connection, i
   std::unique_ptr<SocketSession> session(
     new SocketSession(this, next_session_id_++, server_port));
 
-  InspectorSocket::DelegatePointer delegate =
-    InspectorSocket::DelegatePointer(
-      new SocketSession::Delegate(this, session->id()));
+  auto delegate = std::make_unique<SocketSession::Delegate>(this, session->id());
 
-  InspectorSocket::Pointer inspector =
+  std::unique_ptr<InspectorSocket> inspector =
     InspectorSocket::Accept(connection, std::move(delegate));
   if (inspector) {
     session->Own(std::move(inspector));

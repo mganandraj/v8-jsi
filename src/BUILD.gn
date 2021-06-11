@@ -1,3 +1,8 @@
+declare_args() {
+  # Sets -DV8JSI_ENABLE_INSPECTOR
+  v8jsi_enable_inspector = true
+}
+
 target("shared_library", "v8jsi") {
   sources = [
     "jsi/decorator.h",
@@ -9,19 +14,34 @@ target("shared_library", "v8jsi") {
     "jsi/jsilib-windows.cpp",
     "jsi/jsilib.h",
     "jsi/threadsafe.h",
+    "napi/env-inl.h",
+    "napi/js_native_api_v8_internals.h",
+    "napi/js_native_api_v8.cc",
+    "napi/js_native_api_v8.h",
+    "napi/js_native_ext_api_v8.cpp",
+    "napi/util-inl.h",
+    "public/compat.h",
+    "public/js_native_api_types.h",
+    "public/js_native_api.h",
+    "public/js_native_ext_api.h",
     "public/ScriptStore.h",
     "public/V8JsiRuntime.h",
     "V8JsiRuntime_impl.h",
     "V8JsiRuntime.cpp",
-    "V8Platform.cpp",
-    "V8Platform.h",
+    "IsolateData.h",
   ]
 
   cflags = [ "-DBOOST_ASIO_STANDALONE", "-DBOOST_ASIO_HEADER_ONLY" ]
 
   if (is_win) {
     sources += [
+      "version_gen.rc",
       "etw/tracing.h",
+      "etw/tracing.cpp"
+    ]
+
+  if (v8jsi_enable_inspector) {
+    sources += [
       "inspector/inspector_agent.cpp",
       "inspector/inspector_agent.h",
       "inspector/inspector_socket.cpp",
@@ -39,24 +59,43 @@ target("shared_library", "v8jsi") {
     ]
   }
 
-  include_dirs = [ ".", "../include", "jsi", getenv("BOOST_ROOT") ]
+    ldflags = [ "/OPT:REF", "/INCREMENTAL:NO" ]
+
+    if (!is_clang) {
+      ldflags += [ "/PDBSTRIPPED:v8jsi_stripped.dll.pdb" ]
+    }
+  }
+
+  include_dirs = [ ".", "../include", "jsi", "public", getenv("ASIO_ROOT") ]
 
   configs += [ "//:internal_config_base", "//build/config/compiler:exceptions" ]
   configs -= [ "//build/config/compiler:no_exceptions" ]
+  configs -= [ "//build/config/win:default_incremental_linking" ]
+
+  if (is_win) {
+    configs += [ "//build/config/win:win_msvc_cfg" ]
+  }
 
   deps = [
     "//:v8_headers",
-    "//:v8_monolith",
+    "//:v8_monolith"
   ]
 
   if (is_win) {
-    defines = [ "BUILDING_V8_SHARED", "BOOST_ALL_NO_LIB" ]
+    defines = [ "BUILDING_V8_SHARED" ]
     libs = [
-      "dbghelp.lib",
       "winmm.lib",
       "bcrypt.lib",
       "shlwapi.lib",
     ]
+
+    if (target_os != "winuwp") {
+      libs += [ "dbghelp.lib" ]
+    }
+  }
+
+  if (v8jsi_enable_inspector) {
+    defines += [ "V8JSI_ENABLE_INSPECTOR" ]
   }
 }
 
@@ -69,10 +108,13 @@ target("executable", "jsitests") {
     "//testing/gtest",
   ] 
 
-  configs += [ "//:internal_config_base", "//build/config/compiler:exceptions" ]
-  configs -= [ "//build/config/compiler:no_exceptions" ]
+  configs += [ "//:internal_config_base", "//build/config/compiler:exceptions", "//build/config/compiler:rtti" ]
+  configs -= [ "//build/config/compiler:no_exceptions", "//build/config/compiler:no_rtti" ]
 
-  include_dirs = [ ".", "jsi" ]
+  # Import NAPI functions and (-FC) use full path of source code files in diagnostics.
+  cflags = [ "-DNAPI_EXTERN=__declspec(dllimport)", "-FC" ]
+
+  include_dirs = [ ".", "jsi", "napi", "napi/test", "public" ]
 
   sources = [
     "jsi/decorator.h",
@@ -86,31 +128,46 @@ target("executable", "jsitests") {
     "jsi/threadsafe.h",
     "jsi/test/testlib.h",
     "jsi/test/testlib.cpp",
+    "napi/test/lib/assert_js.cpp",
+    "napi/test/lib/common_js.cpp",
+    "napi/test/lib/modules.h",
+    "napi/test/napitest_v8.cpp",
+    "napi/test/napitest.cpp",
+    "napi/test/napitest.h",
+    "napi/test/test_2_function_arguments.cpp",
+    "napi/test/test_3_callbacks.cpp",
+    "napi/test/test_4_object_factory.cpp",
+    "napi/test/test_5_function_factory.cpp",
+    "napi/test/test_6_object_wrap.cpp",
+    "napi/test/test_7_factory_wrap.cpp",
+    "napi/test/test_8_passing_wrapped.cpp",
+    "napi/test/test_array.cpp",
+    "napi/test/test_assert.cpp",
+    "napi/test/test_bigint.cpp",
+    "napi/test/test_constructor.cpp",
+    "napi/test/test_conversions.cpp",
+    "napi/test/test_dataview.cpp",
+    "napi/test/test_date.cpp",
+    "napi/test/test_error.cpp",
+    "napi/test/test_exception.cpp",
+    "napi/test/test_ext.cpp",
+    "napi/test/test_function.cpp",
+    "napi/test/test_general.cpp",
+    "napi/test/test_handle_scope.cpp",
+    "napi/test/test_instance_data.cpp",
+    "napi/test/test_new_target.cpp",
+    "napi/test/test_number.cpp",
+    "napi/test/test_object.cpp",
+    "napi/test/test_promise.cpp",
+    "napi/test/test_properties.cpp",
+    "napi/test/test_reference_double_free.cpp",
+    "napi/test/test_reference.cpp",
+    "napi/test/test_string.cpp",
+    "napi/test/test_symbol.cpp",
+    "napi/test/test_typedarray.cpp",
+    "public/compat.h",
+    "public/NapiJsiRuntime.cpp",
+    "public/NapiJsiRuntime.h",
     "testmain.cpp"
-  ]
-}
-
-target("executable", "v8jsiapp") {
-  testonly = true
-
-  deps = [
-    ":v8jsi",
-    "//build/win:default_exe_manifest",
-  ] 
-
-  configs += [ "//:internal_config_base", "//build/config/compiler:exceptions" ]
-  configs -= [ "//build/config/compiler:no_exceptions" ]
-
-  include_dirs = [ ".", "../include", "jsi", getenv("BOOST_ROOT") ]
-
-  sources = [
-    "v8jsiapp/logger.cpp",
-    "v8jsiapp/logger.h",
-    "v8jsiapp/main.cpp",
-    "v8jsiapp/scripthost.cpp",
-    "v8jsiapp/scripthost.h",
-    "v8jsiapp/typedjsi.cpp",
-    "v8jsiapp/typedjsi.h",
-    "jsi/jsi.cpp",
   ]
 }

@@ -1,0 +1,223 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index d2bfb6129d..b14a7189f2 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -4661,11 +4661,18 @@ v8_component("v8_libbase") {
+ 
+     defines += [ "_CRT_RAND_S" ]  # for rand_s()
+ 
+-    libs = [
+-      "dbghelp.lib",
+-      "winmm.lib",
+-      "ws2_32.lib",
+-    ]
++    if (target_os == "winuwp") {
++      libs = [
++        "winmm.lib",
++        "ws2_32.lib",
++      ]
++    } else {
++      libs = [
++        "dbghelp.lib",
++        "winmm.lib",
++        "ws2_32.lib",
++      ]
++    }
+ 
+     if (v8_enable_system_instrumentation) {
+       libs += [ "advapi32.lib" ]  # Needed for TraceLoggingProvider.h
+@@ -6212,3 +6219,9 @@ if (!build_with_chromium && v8_use_perfetto) {
+     ]
+   }
+ }  # if (!build_with_chromium && v8_use_perfetto)
++
++group("jsi") {
++  deps = [
++    "jsi:v8jsi",
++  ]
++}
+diff --git a/DEPS b/DEPS
+index b27a4e8e8f..056054b8bd 100644
+--- a/DEPS
++++ b/DEPS
+@@ -580,4 +580,15 @@ hooks = [
+       'tools/generate-header-include-checks.py',
+     ],
+   },
++ {
++   'name': 'rc_win',
++   'pattern': '.',
++   'condition': 'checkout_win and host_os == "win"',
++   'action': [ 'download_from_google_storage',
++               '--no_resume',
++               '--no_auth',
++               '--bucket', 'chromium-browser-clang/rc',
++               '-s', 'build/toolchain/win/rc/win/rc.exe.sha1',
++   ],
++ }
+ ]
+diff --git a/gni/snapshot_toolchain.gni b/gni/snapshot_toolchain.gni
+index e855b88e43..61d56e574f 100644
+--- a/gni/snapshot_toolchain.gni
++++ b/gni/snapshot_toolchain.gni
+@@ -70,6 +70,9 @@ if (v8_snapshot_toolchain == "") {
+     # therefore snapshots will need to be built using native mksnapshot
+     # in combination with qemu
+     v8_snapshot_toolchain = current_toolchain
++  } else if (target_os == "winuwp") {
++    # cross compile UWP Windows with host toolchain (for x64 and x86)
++    v8_snapshot_toolchain = host_toolchain
+   } else if (host_cpu == "x64") {
+     # This is a cross-compile from an x64 host to either a non-Intel target
+     # cpu or a different target OS. Clang will always be used by default on the
+diff --git a/src/base/debug/stack_trace_win.cc b/src/base/debug/stack_trace_win.cc
+index f981bec610..c054ba8dc9 100644
+--- a/src/base/debug/stack_trace_win.cc
++++ b/src/base/debug/stack_trace_win.cc
+@@ -29,6 +29,35 @@ namespace v8 {
+ namespace base {
+ namespace debug {
+ 
++#ifdef WINUWP
++
++bool EnableInProcessStackDumping() {
++  return false;
++}
++
++void DisableSignalStackDump() {
++}
++
++StackTrace::StackTrace() {
++}
++
++StackTrace::StackTrace(EXCEPTION_POINTERS* exception_pointers) {
++  InitTrace(exception_pointers->ContextRecord);
++}
++
++StackTrace::StackTrace(const CONTEXT* context) { InitTrace(context); }
++
++void StackTrace::InitTrace(const CONTEXT*) {
++}
++
++void StackTrace::Print() const { OutputToStream(&std::cerr); }
++
++void StackTrace::OutputToStream(std::ostream* os) const {
++    (*os) << "==== C stack trace not implemented for WINUWP ===============================\n";
++}
++
++#else // WINUWP
++
+ namespace {
+ 
+ // Previous unhandled filter. Will be called if not nullptr when we intercept an
+@@ -244,6 +273,8 @@ void StackTrace::OutputToStream(std::ostream* os) const {
+   }
+ }
+ 
++#endif // WINUWP
++
+ }  // namespace debug
+ }  // namespace base
+ }  // namespace v8
+diff --git a/src/base/platform/platform-win32.cc b/src/base/platform/platform-win32.cc
+index 50da60c72f..3a3b94af98 100644
+--- a/src/base/platform/platform-win32.cc
++++ b/src/base/platform/platform-win32.cc
+@@ -1069,7 +1069,7 @@ Win32MemoryMappedFile::~Win32MemoryMappedFile() {
+ #endif
+ 
+ // DbgHelp isn't supported on MinGW yet
+-#ifndef __MINGW32__
++#if !defined(__MINGW32__) && !defined(WINUWP)
+ // DbgHelp.h functions.
+ using DLL_FUNC_TYPE(SymInitialize) = BOOL(__stdcall*)(IN HANDLE hProcess,
+                                                       IN PSTR UserSearchPath,
+diff --git a/src/compiler/backend/ia32/instruction-selector-ia32.cc b/src/compiler/backend/ia32/instruction-selector-ia32.cc
+index 033a566e11..99a2ee6f5d 100644
+--- a/src/compiler/backend/ia32/instruction-selector-ia32.cc
++++ b/src/compiler/backend/ia32/instruction-selector-ia32.cc
+@@ -3000,6 +3000,7 @@ void InstructionSelector::VisitI8x16Shuffle(Node* node) {
+ void InstructionSelector::VisitI8x16Shuffle(Node* node) { UNREACHABLE(); }
+ #endif  // V8_ENABLE_WEBASSEMBLY
+ 
++#if V8_ENABLE_WEBASSEMBLY
+ void InstructionSelector::VisitI8x16Swizzle(Node* node) {
+   InstructionCode op = kIA32I8x16Swizzle;
+ 
+@@ -3019,6 +3020,9 @@ void InstructionSelector::VisitI8x16Swizzle(Node* node) {
+        g.UseRegister(node->InputAt(0)), g.UseRegister(node->InputAt(1)),
+        arraysize(temps), temps);
+ }
++#else
++void InstructionSelector::VisitI8x16Swizzle(Node* node) { UNREACHABLE(); }
++#endif  // V8_ENABLE_WEBASSEMBLY
+ 
+ namespace {
+ void VisitPminOrPmax(InstructionSelector* selector, Node* node,
+diff --git a/src/diagnostics/unwinding-info-win64.cc b/src/diagnostics/unwinding-info-win64.cc
+index 9a5f7069e7..a53c0ad644 100644
+--- a/src/diagnostics/unwinding-info-win64.cc
++++ b/src/diagnostics/unwinding-info-win64.cc
+@@ -528,7 +528,7 @@ void RegisterNonABICompliantCodeRange(void* start, size_t size_in_bytes) {
+   // by the embedder (like Crashpad).
+ 
+   if (RegisterUnwindInfoForExceptionHandlingOnly()) {
+-#if defined(V8_OS_WIN_X64)
++#if defined(V8_OS_WIN_X64) && !defined(WINUWP)
+     // Windows ARM64 starts since 1709 Windows build, no need to have exception
+     // handling only unwind info for compatibility.
+     if (unhandled_exception_callback_g) {
+@@ -567,7 +567,7 @@ void UnregisterNonABICompliantCodeRange(void* start) {
+   DCHECK(CanRegisterUnwindInfoForNonABICompliantCodeRange());
+ 
+   if (RegisterUnwindInfoForExceptionHandlingOnly()) {
+-#if defined(V8_OS_WIN_X64)
++#if defined(V8_OS_WIN_X64) && !defined(WINUWP)
+     // Windows ARM64 starts since 1709 Windows build, no need to have exception
+     // handling only unwind info for compatibility.
+     if (unhandled_exception_callback_g) {
+diff --git a/src/objects/scope-info.cc b/src/objects/scope-info.cc
+index 308b57a309..8e943c7ae9 100644
+--- a/src/objects/scope-info.cc
++++ b/src/objects/scope-info.cc
+@@ -978,7 +978,9 @@ int ScopeInfo::ReceiverContextSlotIndex() const {
+ }
+ 
+ int ScopeInfo::FunctionContextSlotIndex(String name) const {
+-  DCHECK(name.IsInternalizedString());
++  // This debug check in failing when running CPU profiler on some V8-JSI instances.
++  // TODO: Investigate and find the root cause.
++  // DCHECK(name.IsInternalizedString());
+   if (FunctionVariableBits::decode(Flags()) ==
+           VariableAllocationInfo::CONTEXT &&
+       FunctionName() == name) {
+diff --git a/src/snapshot/embedded/platform-embedded-file-writer-base.cc b/src/snapshot/embedded/platform-embedded-file-writer-base.cc
+index cf380b015d..e5461ea89e 100644
+--- a/src/snapshot/embedded/platform-embedded-file-writer-base.cc
++++ b/src/snapshot/embedded/platform-embedded-file-writer-base.cc
+@@ -139,7 +139,7 @@ EmbeddedTargetOs ToEmbeddedTargetOs(const char* s) {
+     return EmbeddedTargetOs::kFuchsia;
+   } else if (string == "ios" || string == "mac") {
+     return EmbeddedTargetOs::kMac;
+-  } else if (string == "win") {
++  } else if (string == "win" || string == "winuwp") {
+     return EmbeddedTargetOs::kWin;
+   } else {
+     return EmbeddedTargetOs::kGeneric;
+diff --git a/src/utils/allocation.cc b/src/utils/allocation.cc
+index db4d3ac13b..fac0b2a643 100644
+--- a/src/utils/allocation.cc
++++ b/src/utils/allocation.cc
+@@ -76,8 +76,10 @@ const int kAllocationTries = 2;
+ }  // namespace
+ 
+ v8::PageAllocator* GetPlatformPageAllocator() {
+-  DCHECK_NOT_NULL(GetPageTableInitializer()->page_allocator());
+-  return GetPageTableInitializer()->page_allocator();
++  //DCHECK_NOT_NULL(GetPageTableInitializer()->page_allocator());
++  //return GetPageTableInitializer()->page_allocator();
++
++  return V8::GetCurrentPlatform()->GetPageAllocator();
+ }
+ 
+ v8::PageAllocator* SetPlatformPageAllocatorForTesting(

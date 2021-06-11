@@ -9,6 +9,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace inspector {
 
@@ -16,16 +17,20 @@ class InspectorSocketServer;
 class SocketSession;
 class ServerSocket;
 
-class SocketServerDelegate {
-public:
-  virtual void AssignServer(InspectorSocketServer* server) = 0;
-  virtual void StartSession(int session_id, const std::string& target_id) = 0;
-  virtual void EndSession(int session_id) = 0;
-  virtual void MessageReceived(int session_id, const std::string& message) = 0;
-  virtual std::vector<std::string> GetTargetIds() = 0;
-  virtual std::string GetTargetTitle(const std::string& id) = 0;
-  virtual std::string GetTargetUrl(const std::string& id) = 0;
-  virtual ~SocketServerDelegate() {}
+class InspectorAgentDelegate {
+ public:
+  InspectorAgentDelegate();
+  void StartSession(int session_id, const std::string &target_id);
+  void MessageReceived(int session_id, const std::string &message);
+  void EndSession(int session_id);
+  std::vector<std::string> GetTargetIds();
+  std::string GetTargetTitle(const std::string &id);
+  std::string GetTargetUrl(const std::string &id);
+  void AddTarget(std::shared_ptr<AgentImpl> agent);
+
+ private:
+  std::unordered_map<std::string, std::shared_ptr<AgentImpl>> targets_map_;
+  std::unordered_map<int, std::shared_ptr<AgentImpl>> session_targets_map_;
 };
 
 // HTTP Server, writes messages requested as TransportActions, and responds
@@ -33,7 +38,7 @@ public:
 
 class InspectorSocketServer {
 public:
-  InspectorSocketServer(std::unique_ptr<SocketServerDelegate> delegate, int port,
+  InspectorSocketServer(std::unique_ptr<InspectorAgentDelegate>&& delegate, int port,
     FILE* out = stderr);
   ~InspectorSocketServer();
 
@@ -45,6 +50,8 @@ public:
   void TerminateConnections();
   int Port() const;
 
+  void AddTarget(std::shared_ptr<AgentImpl> agent);
+
   // Session connection lifecycle
   void Accept(std::shared_ptr<tcp_connection> connection, int server_port/*, uv_stream_t* server_socket*/);
   bool HandleGetRequest(int session_id, const std::string& host, const std::string& path);
@@ -54,9 +61,6 @@ public:
     delegate_->MessageReceived(session_id, message);
   }
   SocketSession* Session(int session_id);
-  //bool done() const {
-  //  return server_sockets_.empty() && connected_sessions_.empty();
-  //}
 
   static void InspectorSocketServer::SocketConnectedCallback(std::shared_ptr<tcp_connection> connection, void* callbackData_);
   static void InspectorSocketServer::SocketClosedCallback(void* callbackData_);
@@ -69,9 +73,11 @@ private:
   bool TargetExists(const std::string& id);
 
   enum class ServerState { kNew, kRunning, kStopping, kStopped };
-  std::unique_ptr<SocketServerDelegate> delegate_;
+  std::unique_ptr<InspectorAgentDelegate> delegate_;
   const std::string host_;
   int port_;
+
+  std::shared_ptr<tcp_server> tcp_server_;
   
   int next_session_id_;
   FILE* out_;
