@@ -515,10 +515,20 @@ V8Runtime::V8Runtime(V8RuntimeArgs &&args) : args_(std::move(args)) {
   v8::Context::Scope context_scope(context);
 
 #if defined(_WIN32) && defined(V8JSI_ENABLE_INSPECTOR)
+  void* inspector_agent = isolate_->GetData(ISOLATE_INSPECTOR_SLOT);
+  if (inspector_agent) {
+    inspector_agent_ = reinterpret_cast<inspector::Agent*>(inspector_agent)->get_shared();
+  } else {
+    inspector_agent_ = std::make_shared<inspector::Agent>(
+        isolate_, args_.inspectorPort);
+    isolate_->SetData(ISOLATE_INSPECTOR_SLOT, inspector_agent_.get());
+  }
+
+  const char* context_name = "JSIRuntime context";
+  inspector_agent_->addContext(context_.Get(GetIsolate()), context_name);
+
   if (args_.flags.enableInspector) {
     TRACEV8RUNTIME_VERBOSE("Inspector enabled");
-    inspector_agent_ = std::make_unique<inspector::Agent>(
-        isolate_, context_.Get(GetIsolate()), "JSIRuntime context", args_.inspectorPort);
     inspector_agent_->start();
 
     if (args_.flags.waitForDebugger) {
@@ -532,12 +542,16 @@ V8Runtime::V8Runtime(V8RuntimeArgs &&args) : args_(std::move(args)) {
 }
 
 V8Runtime::~V8Runtime() {
-  // TODO: add check that destruction happens on the same thread id as construction
+  // TODO: add check that destruction happens on the same thread id as
+  // construction
+
 #if defined(_WIN32) && defined(V8JSI_ENABLE_INSPECTOR)
-  if (inspector_agent_ && inspector_agent_->IsStarted()) {
-    inspector_agent_->stop();
+  {
+    if (inspector_agent_) {
+      _ISOLATE_CONTEXT_ENTER
+      inspector_agent_->removeContext(context_.Get(isolate_));
+    }
   }
-  inspector_agent_.reset();
 #endif
 
   host_object_constructor_.Reset();
@@ -547,11 +561,20 @@ V8Runtime::~V8Runtime() {
     hostObjectLifetimeTracker->ResetHostObject(false /*isGC*/);
   }
 
+
+
+#if defined(_WIN32) && defined(V8JSI_ENABLE_INSPECTOR)
+  if (inspector_agent_){
+    inspector_agent_.reset();
+  }
+#endif
+
   if (--tls_isolate_usage_counter_ == 0) {
     IsolateData *isolate_data = reinterpret_cast<IsolateData *>(isolate_->GetData(ISOLATE_DATA_SLOT));
     delete isolate_data;
 
     isolate_->SetData(v8runtime::ISOLATE_DATA_SLOT, nullptr);
+    isolate_->SetData(v8runtime::ISOLATE_INSPECTOR_SLOT, nullptr);
 
     isolate_->Exit();
     isolate_->Dispose();
@@ -1586,6 +1609,33 @@ std::unique_ptr<jsi::Runtime> makeV8Runtime(V8RuntimeArgs &&args) {
 
 std::unique_ptr<jsi::Runtime> makeV8Runtime() {
   return std::make_unique<V8Runtime>(V8RuntimeArgs());
+}
+
+struct DebugTask : public JSITask {
+  std::shared_ptr<inspector::Agent> inspector_agent_;
+  DebugTask(std::shared_ptr<inspector::Agent> inspector_agent)
+      : inspector_agent_(inspector_agent){};
+  /*virtual */ void run() override { inspector_agent_->start(); }
+};
+
+void attachDebugger(jsi::Runtime& runtime) {
+  V8Runtime& v8Runtime = reinterpret_cast<V8Runtime&>(runtime);
+  std::shared_ptr<inspector::Agent> inspector_agent =
+      v8Runtime.get_inspector_agent();
+  if (inspector_agent) {
+    V8RuntimeArgs& args = v8Runtime.runtimeArgs();
+    args.foreground_task_runner->postTask(
+        std::make_unique<DebugTask>(inspector_agent));
+  }
+}
+
+void attachDebugger_temp() {
+  std::cout << "attachDebugger" << std::endl;
+  std::unordered_set<std::shared_ptr<inspector::Agent>> agents =
+      inspector::Agent::getActiveAgents();
+  for (auto agent : agents) {
+    agent->start();
+  }
 }
 
 } // namespace v8runtime

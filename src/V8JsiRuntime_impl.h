@@ -178,6 +178,12 @@ class V8Runtime : public facebook::jsi::Runtime {
 
   napi_status NapiGetUniqueUtf8StringRef(napi_env env, const char *str, size_t length, napi_ext_ref *result);
 
+  V8RuntimeArgs& runtimeArgs() { return args_; }
+#if defined(_WIN32) && defined(V8JSI_ENABLE_INSPECTOR)
+  std::shared_ptr<inspector::Agent> get_inspector_agent() {
+    return inspector_agent_;
+  }
+#endif
  private: // Used by NAPI implementation
   static void PromiseRejectCallback(v8::PromiseRejectMessage data);
   void
@@ -605,10 +611,7 @@ class V8Runtime : public facebook::jsi::Runtime {
 
   static void GCEpilogueCallback(v8::Isolate *isolate, v8::GCType type, v8::GCCallbackFlags flags);
 
-  V8RuntimeArgs &runtimeArgs() {
-    return args_;
-  }
-
+ 
  private:
   v8::Local<v8::Context> CreateContext(v8::Isolate *isolate);
 
@@ -651,7 +654,7 @@ class V8Runtime : public facebook::jsi::Runtime {
   facebook::jsi::Value createValue(v8::Local<v8::Value> value) const;
 
 #if defined(_WIN32) && defined(V8JSI_ENABLE_INSPECTOR)
-  std::unique_ptr<inspector::Agent> inspector_agent_;
+  std::shared_ptr<inspector::Agent> inspector_agent_;
 #endif
 
   V8RuntimeArgs args_;
